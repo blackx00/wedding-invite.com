@@ -20,9 +20,9 @@
     </div>
   </div>
 
-  <!-- Ambient music (replace src with your file in /assets/) -->
-  <audio id="bgMusic" loop preload="metadata">
-    <!-- Placeholder: silent until you add a file; button still works -->
+  <!-- Background music: replace assets/background-music.mp3 or edit MUSIC_SRC in script.js -->
+  <audio id="bgMusic" loop preload="auto" playsinline>
+    <source src="assets/background-music.mp3" type="audio/mpeg" />
   </audio>
 
   <button type="button" class="music-toggle" id="musicToggle" aria-pressed="false" aria-label="Toggle background music" title="Music">
