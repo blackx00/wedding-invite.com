@@ -5,8 +5,19 @@
 
 const DEFAULT_WEDDING_DATE = new Date("2030-07-29T4:00:00");
 let weddingDate = new Date(DEFAULT_WEDDING_DATE);
-/** Add your file to /assets/ and set path, e.g. "assets/wedding-music.mp3" */
-const MUSIC_SRC = "";
+/**
+ * Background music file — replace anytime:
+ * 1. Put your .mp3 (or .ogg / .m4a) in the /assets/ folder
+ * 2. Update this path to match your filename
+ * Placeholder: soft romantic piano (replace before sharing publicly if needed)
+ */
+const MUSIC_SRC = "assets/background-music.mp3";
+const MUSIC_TARGET_VOLUME = 0.22;
+const MUSIC_FADE_IN_MS = 2800;
+const MUSIC_FADE_OUT_MS = 550;
+
+/** Set by initBackgroundMusic — called when the envelope opens */
+let startBackgroundMusic = null;
 
 /* ---------- Easing (t in 0..1) ---------- */
 const Easing = {
@@ -177,6 +188,8 @@ function runEnvelopeOpening() {
 
   if (!opening || envelope.classList.contains("is-animating")) return;
 
+  startBackgroundMusic?.();
+
   envelope.classList.add("is-animating");
   seal.disabled = true;
   document.body.classList.add("opening-active");
@@ -305,40 +318,109 @@ function initReveal() {
   els.forEach((el) => io.observe(el));
 }
 
-/* ---------- Music ---------- */
-function initMusic() {
+/* ---------- Background music ---------- */
+function initBackgroundMusic() {
   const audio = document.getElementById("bgMusic");
   const btn = document.getElementById("musicToggle");
   if (!audio || !btn) return;
 
   if (!MUSIC_SRC) {
-    btn.style.display = "none";
+    btn.hidden = true;
     return;
   }
 
   audio.src = MUSIC_SRC;
+  audio.loop = true;
+  audio.preload = "auto";
+  audio.volume = 0;
+  audio.muted = false;
+  audio.setAttribute("playsinline", "");
+  audio.setAttribute("webkit-playsinline", "");
 
-  let playing = false;
+  let isPlaying = false;
+  let userWantsMusic = true;
+  let fadeRaf = 0;
 
-  btn.addEventListener("click", async () => {
-    if (!audio.src) {
-      return;
-    }
-    try {
-      if (playing) {
-        audio.pause();
-        playing = false;
-        btn.classList.remove("is-playing");
-        btn.setAttribute("aria-pressed", "false");
+  function cancelFade() {
+    if (fadeRaf) cancelAnimationFrame(fadeRaf);
+    fadeRaf = 0;
+  }
+
+  function fadeVolumeTo(target, durationMs, onComplete) {
+    cancelFade();
+    const startVol = audio.volume;
+    const start = performance.now();
+
+    function frame(now) {
+      const t = Math.min(1, (now - start) / durationMs);
+      const eased = t * t * (3 - 2 * t);
+      audio.volume = startVol + (target - startVol) * eased;
+      if (t < 1) {
+        fadeRaf = requestAnimationFrame(frame);
       } else {
-        await audio.play();
-        playing = true;
-        btn.classList.add("is-playing");
-        btn.setAttribute("aria-pressed", "true");
+        fadeRaf = 0;
+        audio.volume = target;
+        onComplete?.();
       }
-    } catch {
-      btn.classList.remove("is-playing");
     }
+    fadeRaf = requestAnimationFrame(frame);
+  }
+
+  function setPlayingUI(playing) {
+    isPlaying = playing;
+    btn.classList.toggle("is-playing", playing);
+    btn.setAttribute("aria-pressed", playing ? "true" : "false");
+    btn.setAttribute(
+      "aria-label",
+      playing ? "Pause background music" : "Play background music"
+    );
+  }
+
+  async function startMusic() {
+    if (!userWantsMusic || isPlaying) return;
+    try {
+      audio.muted = false;
+      if (audio.readyState < 2) {
+        audio.load();
+      }
+      await audio.play();
+      setPlayingUI(true);
+      fadeVolumeTo(MUSIC_TARGET_VOLUME, MUSIC_FADE_IN_MS);
+    } catch {
+      setPlayingUI(false);
+    }
+  }
+
+  startBackgroundMusic = startMusic;
+
+  function stopMusic() {
+    cancelFade();
+    const pause = () => {
+      audio.pause();
+      setPlayingUI(false);
+    };
+    if (audio.volume > 0.22) {
+      fadeVolumeTo(0, MUSIC_FADE_OUT_MS, pause);
+    } else {
+      audio.volume = 0;
+      pause();
+    }
+  }
+
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (isPlaying) {
+      userWantsMusic = false;
+      stopMusic();
+    } else {
+      userWantsMusic = true;
+      startMusic();
+    }
+  });
+
+  audio.addEventListener("error", () => {
+    console.warn("[Wedding invite] Could not load background music:", MUSIC_SRC);
+    btn.hidden = true;
   });
 }
 
@@ -363,19 +445,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  initMusic();
+  initBackgroundMusic();
   updateCountdown();
   setInterval(updateCountdown, 1000);
-
-  /* Optional: try muted autoplay for ambience (many browsers allow muted) */
-  const audio = document.getElementById("bgMusic");
-  if (audio && MUSIC_SRC) {
-    audio.muted = true;
-    audio
-      .play()
-      .then(() => {
-        /* leave muted until user unmutes via toggle if desired */
-      })
-      .catch(() => {});
-  }
 });
